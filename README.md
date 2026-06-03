@@ -5,10 +5,12 @@ license risk, security vulnerabilities, and system compatibility.
 
 ## Structure
 
+```
 gittrace/
-├── extension/ # Chrome Extension (Manifest V3)
-├── backend/ # Node.js / Express API
-└── shared/ # Shared constants and types
+├── extension/     # Chrome Extension (Manifest V3)
+├── backend/       # Node.js / Express API
+└── shared/        # Shared constants and types
+```
 
 ## Stack
 
