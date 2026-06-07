@@ -1,41 +1,22 @@
 /**
- * GitTrace — /api/analyze Route
+ * GitTrace Backend — /api/analyze Route (Day 4 Update)
  *
- * POST /api/analyze
- * Body: { owner: string, repo: string }
- *
- * Flow:
- *   1. Validate request body
- *   2. Fetch repo metadata from GitHub
- *   3. Fetch file tree
- *   4. Fetch content of top source files
- *   5. Fetch commits
- *   6. Fetch license
- *   7. Assemble and return full payload
- *
- * Day 4 will add:
- *   - AI detection scoring on the file contents
+ * Now includes:
+ *   - AI detection scoring via Sapling API
  *   - Commit velocity analysis
- *
- * Day 7 will add:
- *   - Security vulnerability scanning (OSV API)
- *   - Phantom package detection
+ *   - In-memory caching (10 min TTL)
+ *   - Full structured response for the Chrome extension
  */
 
 const express = require("express");
 const router = express.Router();
 const github = require("../services/github");
+const aiDetector = require("../services/aiDetector");
+const commitVelocity = require("../services/commitVelocity");
+const cache = require("../services/cache");
 
 // ─── Input Validation ─────────────────────────────────────────────────────────
 
-/**
- * Validate the owner and repo strings from the request body.
- * GitHub usernames/repo names: alphanumeric, hyphens, underscores, dots.
- *
- * @param {string} owner
- * @param {string} repo
- * @returns {{ valid: boolean, error?: string }}
- */
 function validateInput(owner, repo) {
   if (!owner || typeof owner !== "string") {
     return { valid: false, error: "owner is required and must be a string" };
@@ -64,60 +45,71 @@ function validateInput(owner, repo) {
 
 // ─── POST /api/analyze ────────────────────────────────────────────────────────
 
-/**
- * Main analysis endpoint.
- * Fetches all GitHub data and returns structured payload.
- */
 router.post("/", async (req, res, next) => {
   const startTime = Date.now();
   const { owner, repo } = req.body;
 
-  console.log(`\n[Analyze] ─── New Request ────────────────`);
-  console.log(`[Analyze] Repo: ${owner}/${repo}`);
-  console.log(`[Analyze] IP: ${req.ip}`);
+  console.log(`\n[Analyze] ─── New Request ─────────────────────`);
+  console.log(`[Analyze] Repo:  ${owner}/${repo}`);
+  console.log(`[Analyze] IP:    ${req.ip}`);
+  console.log(`[Analyze] Time:  ${new Date().toISOString()}`);
 
   // Step 1: Validate inputs
   const validation = validateInput(owner, repo);
   if (!validation.valid) {
-    return res.status(400).json({
-      success: false,
-      error: validation.error,
+    return res.status(400).json({ success: false, error: validation.error });
+  }
+
+  // Step 2: Check cache
+  const cacheKey = `${owner}/${repo}`;
+  const cachedData = cache.get(cacheKey);
+
+  if (cachedData) {
+    console.log(`[Analyze] Returning cached result for ${cacheKey}`);
+    return res.status(200).json({
+      ...cachedData,
+      fromCache: true,
     });
   }
 
   try {
-    // Step 2: Fetch repo metadata
-    console.log("[Analyze] Step 1/5 — Fetching repo metadata...");
+    // Step 3: Fetch GitHub data in parallel where possible
+    console.log("[Analyze] Step 1/6 — Fetching repo metadata...");
     const meta = await github.getRepoMeta(owner, repo);
 
-    // Step 3: Fetch file tree
-    console.log("[Analyze] Step 2/5 — Fetching file tree...");
+    console.log("[Analyze] Step 2/6 — Fetching file tree...");
     const fileTree = await github.getFileTree(owner, repo, meta.defaultBranch);
 
-    // Step 4: Fetch file contents (top 10 largest source files)
-    console.log("[Analyze] Step 3/5 — Fetching file contents...");
-    const fileContents = await github.getMultipleFileContents(
-      owner,
-      repo,
+    // Fetch file contents, commits and license in parallel
+    console.log(
+      "[Analyze] Step 3/6 — Fetching files, commits and license in parallel...",
+    );
+    const [fileContents, commits, license] = await Promise.all([
+      github.getMultipleFileContents(owner, repo, fileTree.sourceFiles, 10),
+      github.getCommits(owner, repo, 50),
+      github.getLicense(owner, repo),
+    ]);
+
+    // Step 4: Run AI detection on file contents
+    console.log("[Analyze] Step 4/6 — Running AI detection...");
+    const aiResults = await aiDetector.analyzeFiles(
+      fileContents,
       fileTree.sourceFiles,
-      10,
     );
 
-    // Step 5: Fetch commits (last 50)
-    console.log("[Analyze] Step 4/5 — Fetching commits...");
-    const commits = await github.getCommits(owner, repo, 50);
+    // Step 5: Run commit velocity analysis
+    console.log("[Analyze] Step 5/6 — Analyzing commit velocity...");
+    const velocityResults = commitVelocity.analyzeCommitVelocity(commits);
 
-    // Step 6: Fetch license
-    console.log("[Analyze] Step 5/5 — Fetching license...");
-    const license = await github.getLicense(owner, repo);
-
+    // Step 6: Assemble final payload
+    console.log("[Analyze] Step 6/6 — Assembling response...");
     const elapsed = Date.now() - startTime;
-    console.log(`[Analyze] Complete in ${elapsed}ms`);
 
-    // Step 7: Assemble response payload
-    // Day 4 will replace the placeholder scores with real AI detection
     const payload = {
       success: true,
+      fromCache: false,
+
+      // Repository metadata
       meta: {
         owner,
         repo,
@@ -134,71 +126,91 @@ router.post("/", async (req, res, next) => {
         analyzedAt: new Date().toISOString(),
         elapsedMs: elapsed,
       },
+
+      // File tree stats
       fileTree: {
         stats: fileTree.stats,
         truncated: fileTree.truncated,
         configFiles: fileTree.configFiles.map((f) => f.path),
-        // Return top 20 source file paths for heatmap
         sourceFiles: fileTree.sourceFiles.slice(0, 20).map((f) => ({
           path: f.path,
           size: f.size,
         })),
       },
-      // Files with content — Day 4 will run AI detection on these
-      sampleFiles: fileContents.map((f) => ({
-        path: f.path,
-        size: f.size,
-        // Return first 3000 chars for preview — full content used by AI detector
-        preview: f.content.substring(0, 3000),
-        // Day 4: score will be set by AI detector
-        score: null,
-      })),
+
+      // AI Detection Results — NEW in Day 4
+      aiAnalysis: {
+        overallScore: aiResults.overallScore,
+        label: aiResults.label,
+        perFileScores: aiResults.perFileScores,
+        heuristicFlags: aiResults.heuristicFlags,
+        analyzedFiles: aiResults.analyzedFiles,
+        totalChunks: aiResults.totalChunks,
+        elapsedMs: aiResults.elapsedMs,
+      },
+
+      // Commit Velocity Results — NEW in Day 4
       commits: {
         total: commits.length,
-        // Return last 20 for velocity analysis
-        recent: commits.slice(0, 20),
-        // Day 4: velocity flags will be set here
-        flags: [],
+        recent: commits.slice(0, 10),
+        velocity: {
+          flags: velocityResults.flags,
+          summary: velocityResults.summary,
+          riskLevel: velocityResults.riskLevel,
+        },
       },
+
+      // License info (classification comes Day 6)
       license: license
         ? {
             spdxId: license.spdxId,
             name: license.name,
-            // Day 6: risk level will be classified here
             risk: null,
             colour: null,
           }
         : null,
-      // Day 4: AI scores go here
-      aiAnalysis: {
-        overallScore: null,
-        label: null,
-        perFileScores: [],
-        heuristicFlags: [],
-        note: "AI scoring not yet implemented — arrives Day 4",
-      },
+
+      // Sample file previews
+      sampleFiles: fileContents.map((f) => ({
+        path: f.path,
+        size: f.size,
+        preview: f.content.substring(0, 500),
+        // Match score from AI results
+        score:
+          aiResults.perFileScores.find((s) => s.path === f.path)?.score ?? null,
+      })),
     };
+
+    // Cache the result for 10 minutes
+    cache.set(cacheKey, payload);
+
+    console.log(
+      `[Analyze] Complete in ${elapsed}ms — Score: ${aiResults.overallScore} (${aiResults.label})`,
+    );
 
     return res.status(200).json(payload);
   } catch (error) {
-    // Pass to global error handler (errorHandler.js)
     next(error);
   }
 });
 
 // ─── GET /api/analyze/health ──────────────────────────────────────────────────
 
-/**
- * Health check for this specific route.
- * Lets us verify the route is mounted without triggering a full analysis.
- */
 router.get("/health", (req, res) => {
   res.json({
     success: true,
     route: "/api/analyze",
     status: "ready",
+    cache: cache.stats(),
     timestamp: new Date().toISOString(),
   });
+});
+
+// ─── DELETE /api/analyze/cache ────────────────────────────────────────────────
+
+router.delete("/cache", (req, res) => {
+  cache.clear();
+  res.json({ success: true, message: "Cache cleared" });
 });
 
 module.exports = router;
