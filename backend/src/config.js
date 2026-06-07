@@ -1,8 +1,7 @@
 /**
  * GitTrace Backend — Config
  *
- * Single place to read all environment variables.
- * Throws clear errors if required values are missing.
+ * Single source of truth for all environment variables.
  * Import this file everywhere instead of using process.env directly.
  */
 
@@ -10,20 +9,12 @@ require("dotenv").config();
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
-/**
- * Read a required env variable.
- * Throws an error with a clear message if it is missing.
- *
- * @param {string} key - The env variable name
- * @param {string} [fallback] - Optional default value
- * @returns {string}
- */
 function required(key, fallback) {
   const value = process.env[key] || fallback;
   if (!value) {
     throw new Error(
-      `[GitTrace Config] Missing required environment variable: ${key}\n` +
-        `Add it to your backend/.env file.`,
+      `[Config] Missing required env variable: ${key}\n` +
+        `Add it to backend/.env file.`,
     );
   }
   return value;
@@ -32,45 +23,47 @@ function required(key, fallback) {
 // ─── Config Object ────────────────────────────────────────────────────────────
 
 const config = {
-  // Server settings
   server: {
     port: parseInt(process.env.PORT || "3001", 10),
     nodeEnv: process.env.NODE_ENV || "development",
     isDev: (process.env.NODE_ENV || "development") === "development",
   },
 
-  // GitHub API
   github: {
     token: required("GITHUB_TOKEN"),
     apiBase: "https://api.github.com",
-    // Max files to fetch content for (keep low to stay within rate limits)
     maxFilesToFetch: 10,
-    // Only fetch files smaller than this (bytes) — skip huge generated files
     maxFileSizeBytes: 50000,
   },
 
-  // Security
   security: {
-    // Chrome extension sends this header to prove it is GitTrace
-    // Checked in authMiddleware
     secret: process.env.GITTRACE_SECRET || "dev-secret-day3",
   },
 
-  // AI Detection (Day 4)
+  // AI Detection — NEW in Day 4
   ai: {
-    apiKey: process.env.AI_API_KEY || "",
-    apiUrl: process.env.AI_API_URL || "",
+    apiKey: required("AI_API_KEY", "demo-mode"),
+    apiUrl: process.env.AI_API_URL || "https://api.sapling.ai/api/v1/aidetect",
+    demoMode: process.env.AI_DEMO_MODE === "true",
+    // Thresholds for labeling scores
+    thresholds: {
+      low: 30, // below 30  = Low risk
+      medium: 60, // 30 to 60  = Medium risk
+      high: 80, // 60 to 80  = High risk
+      // above 80  = Very High risk
+    },
+    // Max characters to send per file to AI API
+    // Sapling works best with chunks under 2000 chars
+    chunkSize: 1500,
   },
 
-  // Rate limiting
   rateLimit: {
-    windowMs: 60 * 1000, // 1 minute window
-    maxPerWindow: 30, // max 30 requests per IP per minute
+    windowMs: 60 * 1000,
+    maxPerWindow: 30,
   },
 
-  // Cache TTL in seconds
   cache: {
-    ttlSeconds: 10 * 60, // 10 minutes
+    ttlSeconds: 10 * 60,
   },
 };
 
