@@ -990,25 +990,26 @@ export function renderBadge(shadow, data) {
 
   // Signal rows
   setSignalRow(shadow, "gt-sig-ai", `${overallScore}%`, colour);
+
   setSignalRow(
     shadow,
     "gt-sig-velocity",
-    commitFlags?.length ? `${commitFlags.length} flagged` : "Normal",
+    velocityResult(commitFlags),
     commitFlags?.length ? "red" : "green",
   );
+
   setSignalRow(
     shadow,
     "gt-sig-license",
     licenseInfo?.risk || "Unknown",
     licenseInfo?.colour || "amber",
   );
+
   setSignalRow(
     shadow,
     "gt-sig-security",
-    securityIssues?.cves?.length
-      ? `${securityIssues.cves.length} CVEs`
-      : "Clean",
-    securityIssues?.cves?.length ? "red" : "green",
+    securityResult(securityIssues),
+    hasSecurityIssues(securityIssues) ? "red" : "green",
   );
 
   // ── Breakdown tab ─────────────────────────────────────────────
@@ -1169,4 +1170,32 @@ function setSignalRow(shadow, id, value, colour) {
     el.textContent = value;
     el.className = `gt-signal-value gt-${colour}`;
   }
+}
+
+// ─── Signal Helpers ───────────────────────────────────────────────────────────
+
+function velocityResult(commitFlags) {
+  if (!commitFlags || commitFlags.length === 0) return "Normal";
+  const high = commitFlags.filter((f) => f.severity === "high").length;
+  if (high > 0) return `${high} high severity flag${high > 1 ? "s" : ""}`;
+  return `${commitFlags.length} flag${commitFlags.length > 1 ? "s" : ""}`;
+}
+
+function securityResult(securityIssues) {
+  if (!securityIssues) return "Not scanned";
+  const cves = securityIssues.cves?.length || 0;
+  const phantoms = securityIssues.phantoms?.length || 0;
+  const secrets = securityIssues.secrets?.length || 0;
+  const total = cves + phantoms + secrets;
+  if (total === 0) return "Clean";
+  return `${total} issue${total > 1 ? "s" : ""}`;
+}
+
+function hasSecurityIssues(securityIssues) {
+  if (!securityIssues) return false;
+  return (
+    (securityIssues.cves?.length || 0) > 0 ||
+    (securityIssues.phantoms?.length || 0) > 0 ||
+    (securityIssues.secrets?.length || 0) > 0
+  );
 }
