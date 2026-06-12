@@ -68,27 +68,34 @@ Instead of manually inspecting repositories, GitTrace injects live repository in
 
 ## Architecture
 
-```text
-┌─────────────────────────┐
-│      GitHub Repo        │
-└──────────┬──────────────┘
-           │
-           ▼
-┌─────────────────────────┐
-│   Chrome Extension      │
-│ Badge + Heatmap + UI    │
-└──────────┬──────────────┘
-           │ API Requests
-           ▼
-┌─────────────────────────┐
-│    GitTrace Backend     │
-│   Analysis Engine       │
-└──────────┬──────────────┘
-           │
- ┌─────────┼─────────┐
- ▼         ▼         ▼
-GitHub   Sapling    OSV
- API      API       API
+```mermaid
+flowchart TB
+
+    subgraph Browser
+        GH[GitHub Repository Page]
+        EXT[GitTrace Chrome Extension]
+    end
+
+    subgraph Backend
+        API[GitTrace Analysis Engine]
+    end
+
+    subgraph External_Services
+        GITHUB[GitHub REST API]
+        SAPLING[Sapling AI API]
+        OSV[Google OSV API]
+        NPM[npm Registry]
+        PYPI[PyPI Registry]
+    end
+
+    GH --> EXT
+    EXT -->|Analyze Repository| API
+
+    API --> GITHUB
+    API --> SAPLING
+    API --> OSV
+    API --> NPM
+    API --> PYPI
 ```
 
 ---
@@ -126,26 +133,53 @@ gittrace/
 
 ### Frontend Extension
 
-* Vanilla JavaScript (ES Modules)
-* HTML5
-* CSS3
-* Chrome Extension Manifest V3
-* Shadow DOM
-* MutationObserver
-* chrome.storage.session
+[![Frontend Skills](https://skills.syvixor.com/api/icons?i=js,html,css)](https://github.com/syvixor/skills-icons)
+
+- Vanilla JavaScript (ES Modules)
+- HTML5
+- CSS3
+- Chrome Extension Manifest V3
+- Shadow DOM
+- MutationObserver
+- chrome.storage.session
+
+---
 
 ### Backend
 
-* Node.js
-* Express.js
-* Axios
-* node-fetch
-* helmet
-* cors
-* express-rate-limit
-* morgan
-* dotenv
+[![Backend Skills](https://skills.syvixor.com/api/icons?i=nodejs,express)](https://github.com/syvixor/skills-icons)
 
+- Node.js
+- Express.js
+- Axios
+- node-fetch
+- Helmet
+- CORS
+- Express Rate Limit
+- Morgan
+- Dotenv
+
+---
+
+### APIs & Services
+
+[![Services](https://skills.syvixor.com/api/icons?i=github,npm)](https://github.com/syvixor/skills-icons)
+
+- GitHub REST API
+- Google OSV API
+- npm Registry
+- PyPI Registry
+- Sapling AI API
+
+---
+
+### Development Tools
+
+[![Tools](https://skills.syvixor.com/api/icons?i=git,github,vscode)](https://github.com/syvixor/skills-icons)
+
+- Git
+- GitHub
+- VS Code
 ### External Services
 
 | Service         | Purpose              |
