@@ -228,16 +228,18 @@ gittrace/
 
 ## License Compliance Engine
 
-### Supported
+### Supported Licenses
 
-* MIT
-* Apache 2.0
-* GPL-2.0
-* GPL-3.0
-* AGPL
-* LGPL
-* MPL
-* EPL
+| License | Icon |
+|----------|------|
+| MIT | <img src="https://raw.githubusercontent.com/legacy-icons/license-icons/master/dist/32x32/mit.png" width="24" /> |
+| Apache 2.0 | <img src="https://raw.githubusercontent.com/legacy-icons/license-icons/master/dist/32x32/apache.png" width="24" /> |
+| GPL-2.0 | <img src="https://raw.githubusercontent.com/legacy-icons/license-icons/master/dist/32x32/gpl.png" width="24" /> |
+| GPL-3.0 | <img src="https://raw.githubusercontent.com/legacy-icons/license-icons/master/dist/32x32/gpl.png" width="24" /> |
+| AGPL | <img src="https://raw.githubusercontent.com/legacy-icons/license-icons/master/dist/32x32/copyleft.png" width="24" /> |
+| LGPL | <img src="https://raw.githubusercontent.com/legacy-icons/license-icons/master/dist/32x32/copyleft.png" width="24" /> |
+| MPL | <img src="https://raw.githubusercontent.com/legacy-icons/license-icons/master/dist/32x32/mozilla.png" width="24" /> |
+| EPL | <img src="https://raw.githubusercontent.com/legacy-icons/license-icons/master/dist/32x32/opensource.png" width="24" /> |
 
 and 25 total SPDX licenses.
 
@@ -408,6 +410,10 @@ Clears analysis cache.
 
 ## License
 
-MIT License.
+<img src="https://raw.githubusercontent.com/legacy-icons/license-icons/master/dist/32x32/mit.png" width="24" alt="MIT License" />
 
-See the LICENSE file for details.
+**MIT License**
+
+This project is licensed under the MIT License, allowing commercial use, modification, distribution, and private use with minimal restrictions.
+
+For full license terms, see the [LICENSE](LICENSE) file.
