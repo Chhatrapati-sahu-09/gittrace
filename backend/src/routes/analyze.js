@@ -14,6 +14,7 @@ const github = require("../services/github");
 const aiDetector = require("../services/aiDetector");
 const commitVelocity = require("../services/commitVelocity");
 const cache = require("../services/cache");
+const licenseClassifier = require('../services/licenseClassifier');
 
 // ─── Input Validation ─────────────────────────────────────────────────────────
 
@@ -161,14 +162,25 @@ router.post("/", async (req, res, next) => {
       },
 
       // License info (classification comes Day 6)
-      license: license
-        ? {
-            spdxId: license.spdxId,
-            name: license.name,
-            risk: null,
-            colour: null,
-          }
-        : null,
+      license: (() => {
+        const spdxId     = license?.spdxId || null;
+        const classified = licenseClassifier.classifyLicense(spdxId);
+        const combined   = licenseClassifier.getCombinedRisk(
+          classified,
+          aiResults.overallScore
+        );
+        return {
+          spdxId:       classified.spdxId,
+          name:         classified.shortName,
+          risk:         classified.risk,
+          colour:       classified.colour,
+          label:        classified.label,
+          explanation:  classified.explanation,
+          canUseAI:     classified.canUseAI,
+          combinedRisk: combined.combinedRisk,
+          warning:      combined.warning,
+        };
+      })(),
 
       // Sample file previews
       sampleFiles: fileContents.map((f) => ({
