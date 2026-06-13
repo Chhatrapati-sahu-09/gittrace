@@ -745,6 +745,30 @@ export function buildBadgeHTML(repoInfo) {
             <span class="gt-signal-value" id="gt-sig-security">—</span>
           </div>
           <div id="gt-license-detail"></div>
+          <!-- Heatmap Legend -->
+          <div style=" background:#0d1117; border:1px solid #21262d; border-radius:8px; padding:10px 12px; margin-top:4px; ">
+            <div style="font-size:11px;color:#8b949e;margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">
+              File Tree Legend
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;">
+              <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8b949e;">
+                <span style="width:8px;height:8px;border-radius:50%;background:#3fb950;flex-shrink:0"></span>
+                &lt; 30% — Likely human-written
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8b949e;">
+                <span style="width:8px;height:8px;border-radius:50%;background:#d29922;flex-shrink:0"></span>
+                30–60% — Mixed signals
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8b949e;">
+                <span style="width:8px;height:8px;border-radius:50%;background:#f0883e;flex-shrink:0"></span>
+                60–80% — Probably AI
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8b949e;">
+                <span style="width:8px;height:8px;border-radius:50%;background:#f85149;flex-shrink:0"></span>
+                &gt; 80% — Very likely AI
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
