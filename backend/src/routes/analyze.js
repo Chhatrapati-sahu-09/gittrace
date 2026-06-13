@@ -15,6 +15,7 @@ const aiDetector = require("../services/aiDetector");
 const commitVelocity = require("../services/commitVelocity");
 const cache = require("../services/cache");
 const licenseClassifier = require('../services/licenseClassifier');
+const compatAnalyzer = require('../services/compatAnalyzer');
 
 // ─── Input Validation ─────────────────────────────────────────────────────────
 
@@ -75,35 +76,46 @@ router.post("/", async (req, res, next) => {
 
   try {
     // Step 3: Fetch GitHub data in parallel where possible
-    console.log("[Analyze] Step 1/6 — Fetching repo metadata...");
+    console.log("[Analyze] Step 1/8 — Fetching repo metadata...");
     const meta = await github.getRepoMeta(owner, repo);
 
-    console.log("[Analyze] Step 2/6 — Fetching file tree...");
+    console.log("[Analyze] Step 2/8 — Fetching file tree...");
     const fileTree = await github.getFileTree(owner, repo, meta.defaultBranch);
 
-    // Fetch file contents, commits and license in parallel
+    // Fetch file contents, commits, license, and config files in parallel
     console.log(
-      "[Analyze] Step 3/6 — Fetching files, commits and license in parallel...",
+      "[Analyze] Step 3/8 — Fetching files, commits, license, and config files in parallel...",
     );
-    const [fileContents, commits, license] = await Promise.all([
+    const [fileContents, commits, license, configFileContents] = await Promise.all([
       github.getMultipleFileContents(owner, repo, fileTree.sourceFiles, 10),
       github.getCommits(owner, repo, 50),
       github.getLicense(owner, repo),
+      github.getMultipleFileContents(owner, repo, fileTree.configFiles, 15),
     ]);
 
     // Step 4: Run AI detection on file contents
-    console.log("[Analyze] Step 4/6 — Running AI detection...");
+    console.log("[Analyze] Step 4/8 — Running AI detection...");
     const aiResults = await aiDetector.analyzeFiles(
       fileContents,
       fileTree.sourceFiles,
     );
 
-    // Step 5: Run commit velocity analysis
-    console.log("[Analyze] Step 5/6 — Analyzing commit velocity...");
+    // Step 5: (Placeholder for Security scan)
+
+    // Step 6: Run commit velocity analysis
+    console.log('[Analyze] Step 6/8 — Analyzing commit velocity...');
     const velocityResults = commitVelocity.analyzeCommitVelocity(commits);
 
-    // Step 6: Assemble final payload
-    console.log("[Analyze] Step 6/6 — Assembling response...");
+    // Step 7: Run compatibility analysis — NEW Day 8
+    console.log('[Analyze] Step 7/8 — Analyzing compatibility...');
+    const compatResults = compatAnalyzer.analyzeCompatibility({
+      configFiles:  configFileContents,
+      allFilePaths: fileTree.allFiles.map(f => f.path),
+      repoSizeKB:   meta.size || 0,
+    });
+
+    // Step 8: Assemble final payload
+    console.log('[Analyze] Step 8/8 — Assembling response...');
     const elapsed = Date.now() - startTime;
 
     const payload = {
@@ -181,6 +193,28 @@ router.post("/", async (req, res, next) => {
           warning:      combined.warning,
         };
       })(),
+
+      // Compatibility Results — NEW Day 8
+      compatInfo: {
+        runtime: {
+          nodeVersion:   compatResults.runtime.nodeVersion,
+          pythonVersion: compatResults.runtime.pythonVersion,
+          nvmrc:         compatResults.runtime.nvmrc,
+        },
+        platform: {
+          requiredOS:    compatResults.platform.requiredOS,
+          requiredCPU:   compatResults.platform.requiredCPU,
+          archWarnings:  compatResults.platform.archWarnings,
+        },
+        tools: {
+          required: compatResults.tools.required,
+        },
+        compute: {
+          heavyDeps: compatResults.compute.heavyDeps,
+          footprint: compatResults.compute.footprint,
+        },
+        configFilesScanned: compatResults.rawConfigFiles,
+      },
 
       // Sample file previews
       sampleFiles: fileContents.map((f) => ({
