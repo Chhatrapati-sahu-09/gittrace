@@ -478,6 +478,66 @@ export const BADGE_CSS = `
     line-height: 1.4;
   }
 
+  /* ── License Panel ── */
+  .gt-license-card {
+    background: #0d1117;
+    border: 1px solid #21262d;
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .gt-license-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .gt-license-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e6edf3;
+  }
+  .gt-risk-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 99px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    background: rgba(255,255,255,0.08);
+  }
+  .gt-license-explanation {
+    font-size: 12px;
+    color: #8b949e;
+    line-height: 1.55;
+    margin: 0;
+  }
+  .gt-license-warning {
+    font-size: 11px;
+    color: #f85149;
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+    border-radius: 6px;
+    padding: 8px 10px;
+    line-height: 1.5;
+  }
+  .gt-license-meta {
+    display: flex;
+    gap: 14px;
+    font-size: 11px;
+    color: #8b949e;
+    padding-top: 4px;
+    border-top: 1px solid #21262d;
+  }
+  .gt-license-meta code {
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    background: #21262d;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
   /* ── Compat Panel ── */
   .gt-compat-row {
     display: flex;
@@ -684,6 +744,7 @@ export function buildBadgeHTML(repoInfo) {
             <span class="gt-signal-label">🛡️ Security</span>
             <span class="gt-signal-value" id="gt-sig-security">—</span>
           </div>
+          <div id="gt-license-detail"></div>
         </div>
       </div>
 
@@ -1012,6 +1073,9 @@ export function renderBadge(shadow, data) {
     hasSecurityIssues(securityIssues) ? "red" : "green",
   );
 
+  // Add this line after the 4 setSignalRow calls inside renderBadge()
+  renderLicenseInfo(shadow, licenseInfo);
+
   // ── Breakdown tab ─────────────────────────────────────────────
   renderBreakdown(shadow, perFileScores || []);
 
@@ -1111,6 +1175,58 @@ function renderSecurity(shadow, securityIssues) {
   }
 
   container.innerHTML = items.join("");
+}
+
+// ─── License Panel ────────────────────────────────────────────────────────────
+/**
+ * Render license information inside the Score tab.
+ * Called from renderBadge() after real data arrives.
+ *
+ * @param {ShadowRoot} shadow
+ * @param {object} licenseInfo
+ */
+function renderLicenseInfo(shadow, licenseInfo) {
+  // Find the license signal row in the Score tab
+  const licenseSignal = shadow.getElementById('gt-sig-license');
+  if (licenseSignal) {
+    licenseSignal.textContent = licenseInfo?.label || 'Unknown';
+    licenseSignal.className   = `gt-signal-value gt-${licenseInfo?.colour || 'amber'}`;
+  }
+
+  // Find the license detail area (if it exists in the dropdown)
+  const licenseDetail = shadow.getElementById('gt-license-detail');
+  if (!licenseDetail) return;
+
+  if (!licenseInfo) {
+    licenseDetail.innerHTML = `
+      <div class="gt-security-empty">No license information available.</div>
+    `;
+    return;
+  }
+
+  // Risk badge colour
+  const riskColour = licenseInfo.colour || 'amber';
+
+  licenseDetail.innerHTML = `
+    <div class="gt-license-card">
+      <div class="gt-license-header">
+        <span class="gt-license-name">${licenseInfo.name || licenseInfo.spdxId}</span>
+        <span class="gt-risk-badge gt-${riskColour}">${licenseInfo.label}</span>
+      </div>
+      <p class="gt-license-explanation">${licenseInfo.explanation || ''}</p>
+      ${licenseInfo.warning ? `
+        <div class="gt-license-warning">
+          ⚠ ${licenseInfo.warning}
+        </div>
+      ` : ''}
+      <div class="gt-license-meta">
+        <span>SPDX: <code>${licenseInfo.spdxId || 'NONE'}</code></span>
+        <span>AI Use: <strong class="${licenseInfo.canUseAI ? 'gt-green' : 'gt-red'}">
+          ${licenseInfo.canUseAI ? '✓ Generally Safe' : '✗ Caution Required'}
+        </strong></span>
+      </div>
+    </div>
+  `;
 }
 
 // ─── Compat Panel ─────────────────────────────────────────────────────────────
