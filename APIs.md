@@ -4,6 +4,28 @@ This document lists all external APIs and registries utilized by the **GitTrace*
 
 ---
 
+## Setup & Configuration (Adding API Keys)
+
+To run the GitTrace backend successfully, you must configure the necessary API keys in your environment variables. 
+
+Create a `.env` file inside the `backend` directory (i.e. [backend/.env](file:///c:/Users/Sahu%20Ji/OneDrive/Desktop/REACT%20PROJECTS/gittrace/backend/.env)) and add the following keys:
+
+```env
+# 1. GitHub Personal Access Token (PAT)
+# Required to authenticate API calls and prevent rate limiting.
+# Generate one at: https://github.com/settings/tokens (classic) or https://github.com/settings/personal-access-tokens (fine-grained)
+# Required Scopes: "public_repo" (or "repo" if analyzing private repositories)
+GITHUB_TOKEN=your_github_personal_access_token_here
+
+# 2. Sapling AI Detection API Key
+# Required to calculate the AI probability scores of repository code files.
+# Sign up and get a key at: https://sapling.ai
+# Set to "demo-mode" to run in sandbox/demo mode with mock/simulated results.
+AI_API_KEY=your_sapling_api_key_here
+```
+
+---
+
 ## 1. GitHub REST API
 
 Used to interact with the repository under analysis and fetch all necessary code and metadata.
