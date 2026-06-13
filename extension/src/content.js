@@ -19,6 +19,7 @@ import {
   setBadgeError,
   renderBadge,
 } from "./badge.js";
+import { injectHeatmap, removeHeatmap, watchFileTree } from "./heatmap.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,10 @@ const GITHUB_RESERVED_PATHS = new Set([
   "copilot",
   "trending",
 ]);
+
+// Holds the MutationObserver so we can disconnect it on navigation
+let heatmapObserver = null;
+let currentRepo = "";
 
 // ─── URL Parsing ──────────────────────────────────────────────────────────────
 
@@ -217,6 +222,23 @@ async function runAnalysis(shadow, repoInfo) {
 
     // Step 3: Render results
     renderBadge(shadow, data);
+
+    // Inject file tree heatmap if we have per-file scores
+    if (data.perFileScores && data.perFileScores.length > 0) {
+      // Remove any existing dots first (in case of refresh)
+      removeHeatmap();
+      if (heatmapObserver) {
+        heatmapObserver.disconnect();
+        heatmapObserver = null;
+      }
+
+      // Inject dots into the current file tree
+      injectHeatmap(data.perFileScores);
+
+      // Watch for dynamic rendering of more file rows
+      heatmapObserver = watchFileTree(data.perFileScores);
+    }
+
     console.log("[GitTrace] Analysis complete. Score:", data.overallScore);
   } catch (err) {
     console.error("[GitTrace] Analysis failed:", err);
@@ -259,6 +281,8 @@ function init() {
     return;
   }
 
+  currentRepo = `${repoInfo.owner}/${repoInfo.repo}`;
+
   if (document.getElementById(GITTRACE_HOST_ID)) {
     console.log("[GitTrace] Badge already mounted — skipping.");
     return;
@@ -273,13 +297,33 @@ function init() {
   mountBadge(insertionPoint, repoInfo);
 }
 
-init();
+function handleNavigation() {
+  const repoInfo = parseRepoFromURL();
+  const newRepo  = repoInfo ? `${repoInfo.owner}/${repoInfo.repo}` : '';
+  if (newRepo === currentRepo) return;
+  currentRepo = newRepo;
+  console.log('[GitTrace] Navigation detected. New repo:', newRepo || '(none)');
 
-/*
- * Day 5: SPA navigation support
- * document.addEventListener('turbo:load', () => {
- *   const existing = document.getElementById(GITTRACE_HOST_ID);
- *   if (existing) existing.remove();
- *   init();
- * });
- */
+  // Clean up heatmap observer
+  if (heatmapObserver) {
+    heatmapObserver.disconnect();
+    heatmapObserver = null;
+  }
+
+  // Remove old heatmap dots
+  removeHeatmap();
+
+  // Remove old badge
+  const existing = document.getElementById(GITTRACE_HOST_ID);
+  if (existing) {
+    existing.remove();
+    console.log('[GitTrace] Old badge removed.');
+  }
+
+  init();
+}
+
+// SPA navigation support
+document.addEventListener('turbo:load', handleNavigation);
+
+init();
