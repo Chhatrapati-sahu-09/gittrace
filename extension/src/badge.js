@@ -771,6 +771,8 @@ export function buildBadgeHTML(repoInfo) {
               </div>
             </div>
           </div>
+          <!-- PR Shield Info (shown on PR pages only) -->
+          <div id="gt-pr-info" style="display:none;flex-direction:column;"></div>
         </div>
       </div>
 
@@ -979,6 +981,16 @@ export function setBadgeError(shadow, message) {
  * @param {object}   data.compatInfo     - { os, nodeRequired, nodeDetected, ... }
  */
 export function renderBadge(shadow, data) {
+  // ── PR page context ────────────────────────────────────────────
+  // If on a PR diff page, add PR badge to the status text
+  const onPRPage = window.location.pathname.includes('/pull/');
+  if (onPRPage) {
+    const statusText = shadow.getElementById('gt-status-text');
+    if (statusText && data.overallScore !== null) {
+      statusText.textContent = `${data.overallScore}% · PR`;
+    }
+  }
+
   const {
     overallScore,
     label,
@@ -1101,6 +1113,60 @@ export function renderBadge(shadow, data) {
 
   // Add this line after the 4 setSignalRow calls inside renderBadge()
   renderLicenseInfo(shadow, licenseInfo);
+
+  // ── PR context in Score tab ──────────────────────────────────
+  const prInfoEl = shadow.getElementById('gt-pr-info');
+  if (prInfoEl) {
+    const onPR      = window.location.pathname.includes('/pull/');
+    const highFiles = (perFileScores || []).filter(f => f.score >= 70);
+
+    if (onPR) {
+      prInfoEl.style.display = 'flex';
+      prInfoEl.innerHTML = `
+        <div style="
+          padding:10px 12px;
+          background:#0d1117;
+          border:1px solid #21262d;
+          border-radius:6px;
+          font-size:12px;
+          display:flex;
+          flex-direction:column;
+          gap:6px;
+        ">
+          <div style="font-weight:600;color:#e6edf3;">
+            🔍 PR Shield Active
+          </div>
+          <div style="color:#8b949e;font-size:11px;line-height:1.5;">
+            ${highFiles.length > 0
+              ? `<span style="color:#f85149;font-weight:600;">
+                   ${highFiles.length} file${highFiles.length > 1 ? 's' : ''} flagged.
+                 </span>
+                 Added lines in these files are highlighted in the diff.`
+              : '✅ No high-risk files detected in this PR.'
+            }
+          </div>
+          ${highFiles.length > 0 ? `
+            <div style="display:flex;flex-direction:column;gap:3px;margin-top:2px;">
+              ${highFiles.slice(0, 3).map(f => `
+                <div style="font-family:monospace;font-size:10px;
+                  color:#8b949e;display:flex;justify-content:space-between;">
+                  <span>${f.path.split('/').pop()}</span>
+                  <span style="color:#f0883e;font-weight:700;">${f.score}%</span>
+                </div>
+              `).join('')}
+              ${highFiles.length > 3 ? `
+                <div style="font-size:10px;color:#484f58;">
+                  + ${highFiles.length - 3} more
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    } else {
+      prInfoEl.style.display = 'none';
+    }
+  }
 
   // ── Breakdown tab ─────────────────────────────────────────────
   renderBreakdown(shadow, perFileScores || []);
