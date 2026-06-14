@@ -24,6 +24,14 @@ import {
   buildCompatReport,
   saveUserRuntimeVersions,
 } from './osDetector.js';
+import {
+  isPRFilesPage,
+  parsePRFromURL,
+  injectPRSummaryBar,
+  processPRDiffs,
+  removePRShield,
+  watchPRDiffs,
+} from './prShield.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -54,7 +62,9 @@ const GITHUB_RESERVED_PATHS = new Set([
 
 // Holds the MutationObserver so we can disconnect it on navigation
 let heatmapObserver = null;
+let prObserver = null;
 let currentRepo = "";
+let currentPath = "";
 
 // ─── URL Parsing ──────────────────────────────────────────────────────────────
 
@@ -276,6 +286,27 @@ async function runAnalysis(shadow, repoInfo) {
       heatmapObserver = watchFileTree(badgeData.perFileScores);
     }
 
+    // ── PR Inline Shield — inject on PR diff pages ────────────────
+    if (isPRFilesPage() && badgeData.perFileScores?.length > 0) {
+      console.log('[GitTrace] PR diff page detected — running PR Shield');
+
+      // Clean up any existing PR shield first
+      removePRShield();
+      if (prObserver) {
+        prObserver.disconnect();
+        prObserver = null;
+      }
+
+      // Inject summary bar at top of PR
+      injectPRSummaryBar(badgeData.perFileScores, badgeData.overallScore);
+
+      // Process all current diff blocks
+      processPRDiffs(badgeData.perFileScores, badgeData.overallScore);
+
+      // Watch for lazily loaded diff blocks
+      prObserver = watchPRDiffs(badgeData.perFileScores, badgeData.overallScore);
+    }
+
     console.log("[GitTrace] Analysis complete. Score:", badgeData.overallScore);
   } catch (err) {
     console.error("[GitTrace] Analysis failed:", err);
@@ -322,6 +353,7 @@ function init() {
   }
 
   currentRepo = `${repoInfo.owner}/${repoInfo.repo}`;
+  currentPath = window.location.pathname;
 
   if (document.getElementById(GITTRACE_HOST_ID)) {
     console.log("[GitTrace] Badge already mounted — skipping.");
@@ -340,17 +372,26 @@ function init() {
 function handleNavigation() {
   const repoInfo = parseRepoFromURL();
   const newRepo  = repoInfo ? `${repoInfo.owner}/${repoInfo.repo}` : '';
-  if (newRepo === currentRepo) return;
-  currentRepo = newRepo;
-  console.log('[GitTrace] Navigation detected. New repo:', newRepo || '(none)');
 
-  // Clean up heatmap observer
+  if (newRepo === currentRepo && window.location.pathname === currentPath) return;
+
+  currentRepo = newRepo;
+  currentPath = window.location.pathname;  // track path too
+
+  console.log('[GitTrace] Navigation detected. Path:', window.location.pathname);
+
+  // Clean up PR shield
+  if (prObserver) {
+    prObserver.disconnect();
+    prObserver = null;
+  }
+  removePRShield();
+
+  // Clean up heatmap
   if (heatmapObserver) {
     heatmapObserver.disconnect();
     heatmapObserver = null;
   }
-
-  // Remove old heatmap dots
   removeHeatmap();
 
   // Remove old badge
