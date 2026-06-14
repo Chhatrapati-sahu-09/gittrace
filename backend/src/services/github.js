@@ -400,6 +400,37 @@ async function getLicense(owner, repo) {
   }
 }
 
+/**
+ * Fetch the list of files changed in a Pull Request.
+ *
+ * @param {string} owner
+ * @param {string} repo
+ * @param {string} prNumber
+ * @returns {Promise<Array<{ filename: string, status: string, additions: number, deletions: number }>>}
+ */
+async function getPRFiles(owner, repo, prNumber) {
+  console.log(`[GitHub] Fetching PR files: ${owner}/${repo}#${prNumber}`);
+
+  try {
+    const response = await githubClient.get(
+      `/repos/${owner}/${repo}/pulls/${prNumber}/files`,
+      { params: { per_page: 100 } }
+    );
+    checkRateLimit(response.headers);
+
+    return response.data.map(file => ({
+      filename:  file.filename,
+      status:    file.status,   // added, modified, removed, renamed
+      additions: file.additions,
+      deletions: file.deletions,
+      changes:   file.changes,
+    }));
+
+  } catch (error) {
+    handleGitHubError(error, `getPRFiles(${owner}/${repo}#${prNumber})`);
+  }
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -409,4 +440,5 @@ module.exports = {
   getMultipleFileContents,
   getCommits,
   getLicense,
+  getPRFiles,       // NEW
 };

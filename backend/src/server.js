@@ -18,6 +18,7 @@ const config = require("./config");
 const authMiddleware = require("./middleware/auth");
 const errorHandler = require("./middleware/errorHandler");
 const analyzeRoute = require("./routes/analyze");
+const prRoute = require('./routes/pr');
 
 // ─── App Setup ────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,7 @@ app.get("/", (req, res) => {
     endpoints: {
       health: "GET  /health",
       analyze: "POST /api/analyze",
+      pr:       'GET  /api/pr/:owner/:repo/pull/:prNumber',  // NEW
     },
   });
 });
@@ -100,6 +102,7 @@ app.get("/health", (req, res) => {
 
 // Protected API routes — auth middleware checks X-GitTrace-Key
 app.use("/api/analyze", authMiddleware, analyzeRoute);
+app.use('/api/pr', authMiddleware, prRoute);
 
 // 404 handler — for any route we haven't defined
 app.use((req, res) => {
