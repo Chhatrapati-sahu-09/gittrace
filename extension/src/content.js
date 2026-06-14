@@ -20,6 +20,10 @@ import {
   renderBadge,
 } from "./badge.js";
 import { injectHeatmap, removeHeatmap, watchFileTree } from "./heatmap.js";
+import {
+  buildCompatReport,
+  saveUserRuntimeVersions,
+} from './osDetector.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -197,6 +201,32 @@ function mountBadge(insertionPoint, repoInfo) {
   runAnalysis(shadow, repoInfo);
 }
 
+// ─── API Response Transformer ────────────────────────────────────────────────
+
+/**
+ * Transform raw backend API response into the structure expected by renderBadge.
+ *
+ * @param {object} response - The API response object (from background or direct fetch)
+ * @returns {object} Flatter object for renderBadge
+ */
+function transformAPIResponse(response) {
+  if (!response) return null;
+
+  const data = response.data || response;
+
+  return {
+    overallScore:   data.aiAnalysis?.overallScore ?? data.overallScore ?? 0,
+    label:          data.aiAnalysis?.label ?? data.label ?? 'Unknown',
+    perFileScores:  data.aiAnalysis?.perFileScores ?? data.perFileScores ?? [],
+    commitFlags:    data.commits?.velocity?.flags ?? data.commitFlags ?? [],
+    licenseInfo:    data.license ?? data.licenseInfo ?? null,
+    securityIssues: data.securityIssues ?? { cves: [], phantoms: [], secrets: [] },
+    // System compatibility — NOW uses real OS detection
+    compatInfo: null,  // Will be set by buildCompatReport() below
+    compatReport: null,  // Set after buildCompatReport() runs
+  };
+}
+
 // ─── Analysis Runner ──────────────────────────────────────────────────────────
 
 /**
@@ -216,15 +246,22 @@ async function runAnalysis(shadow, repoInfo) {
 
   try {
     // Step 2: Get data
-    // Day 2 → demo data with fake 1.5s delay to simulate network
-    // Day 5 → replace with real backend POST
-    const data = await fetchAnalysis(repoInfo);
+    const response = await fetchAnalysis(repoInfo);
 
-    // Step 3: Render results
-    renderBadge(shadow, data);
+    // Transform raw API response
+    const badgeData = transformAPIResponse(response);
+
+    // Build compat report by comparing user env vs repo requirements
+    const compatReport = await buildCompatReport(response.data.compatInfo);
+
+    // Merge compat into badge data
+    badgeData.compatReport = compatReport;
+
+    // Render the badge with real scores
+    renderBadge(shadow, badgeData);
 
     // Inject file tree heatmap if we have per-file scores
-    if (data.perFileScores && data.perFileScores.length > 0) {
+    if (badgeData.perFileScores && badgeData.perFileScores.length > 0) {
       // Remove any existing dots first (in case of refresh)
       removeHeatmap();
       if (heatmapObserver) {
@@ -233,13 +270,13 @@ async function runAnalysis(shadow, repoInfo) {
       }
 
       // Inject dots into the current file tree
-      injectHeatmap(data.perFileScores);
+      injectHeatmap(badgeData.perFileScores);
 
       // Watch for dynamic rendering of more file rows
-      heatmapObserver = watchFileTree(data.perFileScores);
+      heatmapObserver = watchFileTree(badgeData.perFileScores);
     }
 
-    console.log("[GitTrace] Analysis complete. Score:", data.overallScore);
+    console.log("[GitTrace] Analysis complete. Score:", badgeData.overallScore);
   } catch (err) {
     console.error("[GitTrace] Analysis failed:", err);
     setBadgeError(shadow, err.message || "Unknown error occurred.");
@@ -248,26 +285,29 @@ async function runAnalysis(shadow, repoInfo) {
 
 /**
  * Fetch analysis data.
- * Day 2: Returns demo data after a fake delay.
- * Day 5: Replaces this with a real fetch() call to the backend.
+ * Calls the background service worker to fetch analysis for the repo.
  *
  * @param {{ owner: string, repo: string }} repoInfo
  * @returns {Promise}
  */
 async function fetchAnalysis(repoInfo) {
-  // ── DAY 2: Demo mode ───────────────────────────────────────────
-  // Simulate network delay
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-  return getDemoData(repoInfo);
-
-  // ── DAY 5: Real backend call (uncomment this, delete above) ────
-  // const response = await fetch('http://localhost:3001/api/analyze', {
-  //   method: 'POST',
-  //   headers: { 'Content-Type': 'application/json' },
-  //   body: JSON.stringify({ owner: repoInfo.owner, repo: repoInfo.repo }),
-  // });
-  // if (!response.ok) throw new Error(`Backend error: ${response.status}`);
-  // return response.json();
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      {
+        type: "ANALYZE_REPO",
+        payload: { owner: repoInfo.owner, repo: repoInfo.repo },
+      },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else if (response && response.success) {
+          resolve(response);
+        } else {
+          reject(new Error(response?.error || "Unknown backend error"));
+        }
+      }
+    );
+  });
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
