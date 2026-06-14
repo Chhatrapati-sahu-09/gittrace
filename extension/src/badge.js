@@ -9,6 +9,8 @@
  *   - Dynamic colour logic based on AI probability score
  */
 
+import { saveUserRuntimeVersions } from './osDetector.js';
+
 // ─── Colour Logic ─────────────────────────────────────────────────────────────
 
 /**
@@ -1107,7 +1109,7 @@ export function renderBadge(shadow, data) {
   renderSecurity(shadow, securityIssues || {});
 
   // ── Compat tab ────────────────────────────────────────────────
-  renderCompat(shadow, compatInfo || {});
+  renderCompat(shadow, data.compatReport || null);
 }
 
 // ─── Breakdown Panel ──────────────────────────────────────────────────────────
@@ -1255,39 +1257,270 @@ function renderLicenseInfo(shadow, licenseInfo) {
 
 // ─── Compat Panel ─────────────────────────────────────────────────────────────
 
-function renderCompat(shadow, compatInfo) {
-  hideLoading(shadow, "compat");
-  const container = shadow.getElementById("gt-compat-content");
+/**
+ * Render the compatibility tab with full report data.
+ *
+ * @param {ShadowRoot} shadow
+ * @param {object}     compatReport - From buildCompatReport() in osDetector.js
+ */
+function renderCompat(shadow, compatReport) {
+  hideLoading(shadow, 'compat');
+  const container = shadow.getElementById('gt-compat-content');
   if (!container) return;
 
-  container.style.display = "flex";
+  container.style.display = 'flex';
 
-  const rows = [
-    {
-      label: "💻 Your OS",
-      value: compatInfo.userOS || navigator.platform || "Unknown",
-    },
-    {
-      label: "📦 Node Required",
-      value: compatInfo.nodeRequired || "Not specified",
-    },
-    {
-      label: "🐍 Python Required",
-      value: compatInfo.pythonRequired || "Not specified",
-    },
-    { label: "🏗️ Architecture", value: compatInfo.arch || "Unknown" },
-  ];
+  // No compat data yet
+  if (!compatReport) {
+    container.innerHTML = `
+      <div class="gt-security-empty">
+        Compatibility data not available.<br>
+        <span style="font-size:11px;margin-top:4px;display:block;">
+          Make sure the backend is running.
+        </span>
+      </div>
+    `;
+    return;
+  }
 
-  container.innerHTML = rows
-    .map(
-      (row) => `
-    <div class="gt-compat-row">
-      <span class="gt-compat-label">${row.label}</span>
-      <span class="gt-compat-value">${row.value}</span>
+  const { userEnvironment, repoRequirements, checks, compute, overallStatus } = compatReport;
+
+  const items = [];
+
+  // ── Overall status banner ──────────────────────────────────────
+  const statusColour = overallStatus === 'ok'      ? '#3fb950' :
+                       overallStatus === 'warning'  ? '#d29922' : '#f85149';
+  const statusLabel  = overallStatus === 'ok'      ? '✅ Compatible' :
+                       overallStatus === 'warning'  ? '⚠ Review Required' :
+                                                      '❌ Incompatible';
+
+  items.push(`
+    <div style="
+      padding:10px 12px;
+      background:#0d1117;
+      border:1px solid ${statusColour}44;
+      border-radius:8px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+    ">
+      <span style="font-size:12px;font-weight:700;color:${statusColour}">
+        ${statusLabel}
+      </span>
+      <span style="font-size:10px;color:#8b949e;">
+        ${compatReport.configFilesScanned?.length || 0} config files scanned
+      </span>
     </div>
-  `,
-    )
-    .join("");
+  `);
+
+  // ── Your Environment ───────────────────────────────────────────
+  items.push(`
+    <div style="font-size:11px;font-weight:600;color:#8b949e;
+      text-transform:uppercase;letter-spacing:.06em;margin-top:4px;">
+      Your Environment
+    </div>
+  `);
+
+  items.push(compatRow(
+    '💻 OS',
+    userEnvironment.os || 'Unknown',
+    checks.os?.status || 'unknown'
+  ));
+
+  items.push(compatRow(
+    '🏗️ Architecture',
+    userEnvironment.arch || 'Unknown',
+    checks.arch?.warnings?.length > 0 ? 'warning' : 'ok'
+  ));
+
+  // Node version row with input if not set
+  if (!userEnvironment.versionsSetByUser) {
+    items.push(`
+      <div class="gt-compat-row" style="flex-direction:column;align-items:flex-start;gap:6px;">
+        <span class="gt-compat-label">📦 Your Node.js Version</span>
+        <div style="display:flex;gap:6px;width:100%;">
+          <input
+            id="gt-node-input"
+            type="text"
+            placeholder="e.g. 20.11.0"
+            style="
+              flex:1;padding:4px 8px;font-size:12px;
+              background:#21262d;border:1px solid #30363d;
+              border-radius:4px;color:#e6edf3;outline:none;
+              font-family:inherit;
+            "
+          />
+          <button id="gt-node-save" style="
+            padding:4px 10px;font-size:11px;font-weight:600;
+            background:#6e6eff;border:none;border-radius:4px;
+            color:#fff;cursor:pointer;
+          ">Save</button>
+        </div>
+        <span style="font-size:10px;color:#8b949e;">
+          Required: ${repoRequirements.nodeVersion || 'Not specified'}
+        </span>
+      </div>
+    `);
+  } else {
+    items.push(compatRow(
+      '📦 Node.js',
+      `You: ${userEnvironment.nodeVersion} / Required: ${repoRequirements.nodeVersion || 'Any'}`,
+      checks.node?.status || 'unknown',
+      checks.node?.reason
+    ));
+  }
+
+  // Python row
+  if (repoRequirements.pythonVersion) {
+    items.push(compatRow(
+      '🐍 Python',
+      `Required: ${repoRequirements.pythonVersion}` +
+      (userEnvironment.pythonVersion ? ` / You: ${userEnvironment.pythonVersion}` : ''),
+      checks.python?.status || 'unknown',
+      checks.python?.reason
+    ));
+  }
+
+  // ── Repo Requirements ──────────────────────────────────────────
+  items.push(`
+    <div style="font-size:11px;font-weight:600;color:#8b949e;
+      text-transform:uppercase;letter-spacing:.06em;margin-top:4px;">
+      Repo Requirements
+    </div>
+  `);
+
+  if (repoRequirements.requiredOS) {
+    items.push(compatRow(
+      '🖥️ Required OS',
+      repoRequirements.requiredOS.join(', '),
+      checks.os?.status || 'unknown'
+    ));
+  }
+
+  // Architecture warnings
+  if (checks.arch?.warnings?.length > 0) {
+    checks.arch.warnings.forEach(warn => {
+      items.push(`
+        <div style="
+          padding:8px 10px;
+          background:rgba(210,153,34,0.1);
+          border:1px solid rgba(210,153,34,0.3);
+          border-radius:6px;
+          font-size:11px;
+          color:#d29922;
+          line-height:1.5;
+        ">
+          ⚠ ${warn}
+        </div>
+      `);
+    });
+  }
+
+  // Required global tools
+  if (repoRequirements.requiredTools?.length > 0) {
+    items.push(`
+      <div style="
+        background:#0d1117;border:1px solid #21262d;
+        border-radius:6px;padding:10px 12px;
+      ">
+        <div style="font-size:11px;color:#8b949e;margin-bottom:8px;font-weight:600;">
+          🔧 Required Global Tools
+        </div>
+        ${repoRequirements.requiredTools.map(tool => `
+          <div style="display:flex;align-items:center;gap:8px;padding:4px 0;
+            font-size:12px;color:#e6edf3;border-bottom:1px solid #21262d;">
+            <code style="font-family:monospace;background:#21262d;
+              padding:1px 6px;border-radius:3px;font-size:11px;">
+              ${tool.name}
+            </code>
+            <span style="color:#8b949e;font-size:11px;">${tool.description}</span>
+          </div>
+        `).join('')}
+      </div>
+    `);
+  }
+
+  // ── Compute Footprint ──────────────────────────────────────────
+  if (compute.heavyDeps?.length > 0) {
+    items.push(`
+      <div style="
+        background:rgba(248,81,73,0.06);
+        border:1px solid rgba(248,81,73,0.2);
+        border-radius:6px;padding:10px 12px;
+      ">
+        <div style="font-size:11px;color:#f85149;margin-bottom:8px;font-weight:700;">
+          ⚡ Heavy Compute Dependencies
+          ${compute.needsGPU ? '<span style="margin-left:6px;font-size:10px;background:rgba(248,81,73,0.2);padding:1px 6px;border-radius:99px;">GPU Required</span>' : ''}
+        </div>
+        ${compute.heavyDeps.map(dep => `
+          <div style="display:flex;justify-content:space-between;
+            font-size:11px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+            <span style="color:#e6edf3;font-family:monospace;">${dep.package}</span>
+            <span style="color:#8b949e;">${dep.ram} RAM${dep.gpu ? ' · GPU' : ''}</span>
+          </div>
+        `).join('')}
+        ${compute.footprint?.warning ? `
+          <div style="margin-top:8px;font-size:11px;color:#f0883e;">
+            ⚠ ${compute.footprint.warning}
+          </div>
+        ` : ''}
+      </div>
+    `);
+  }
+
+  // ── Empty state ────────────────────────────────────────────────
+  if (items.length <= 1) {
+    container.innerHTML = `
+      <div class="gt-security-empty">
+        ✅ No compatibility issues detected.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = items.join('');
+
+  // Wire the save button for Node version input
+  const saveBtn  = container.querySelector('#gt-node-save');
+  const nodeInput = container.querySelector('#gt-node-input');
+
+  if (saveBtn && nodeInput) {
+    saveBtn.addEventListener('click', async () => {
+      const version = nodeInput.value.trim();
+      if (!version) return;
+
+      await saveUserRuntimeVersions({ nodeVersion: version });
+      saveBtn.textContent = '✓ Saved';
+      saveBtn.style.background = '#3fb950';
+
+      // Re-run analysis after a short delay so new version is used
+      setTimeout(() => {
+        console.log('[GitTrace] Node version saved — refresh for updated compat check');
+      }, 500);
+    });
+  }
+}
+
+// ─── Compat Row Helper ────────────────────────────────────────────────────────
+
+function compatRow(label, value, status, tooltip) {
+  const statusIcon = status === 'ok'      ? '✅' :
+                     status === 'warning'  ? '⚠️' :
+                     status === 'error'    ? '❌' : '❓';
+
+  const statusColour = status === 'ok'     ? '#3fb950' :
+                       status === 'warning' ? '#d29922' :
+                       status === 'error'   ? '#f85149' : '#8b949e';
+
+  return `
+    <div class="gt-compat-row" title="${tooltip || ''}">
+      <span class="gt-compat-label">${label}</span>
+      <span style="font-size:12px;font-weight:600;color:${statusColour};
+        display:flex;align-items:center;gap:4px;">
+        ${statusIcon} ${value}
+      </span>
+    </div>
+  `;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
